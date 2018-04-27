@@ -1,2 +1,5 @@
 ﻿  main.cpp
+c:\users\dora\documents\github\projectfordummies-dora\projectfordummies\projectfordummies\main.cpp(84): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+c:\users\dora\documents\github\projectfordummies-dora\projectfordummies\projectfordummies\main.cpp(84): warning C4267: 'initializing': conversion from 'size_t' to 'const int', possible loss of data
+c:\users\dora\documents\github\projectfordummies-dora\projectfordummies\projectfordummies\main.cpp(95): warning C4244: 'argument': conversion from 'double' to 'int', possible loss of data
   ProjectForDummies.vcxproj -> C:\Users\Dora\Documents\GitHub\ProjectForDummies-Dora\ProjectForDummies\x64\Debug\ProjectForDummies.exe

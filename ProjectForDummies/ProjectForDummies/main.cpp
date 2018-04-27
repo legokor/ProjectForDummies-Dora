@@ -4,8 +4,33 @@
 using namespace cv;
 using namespace std;
 
+/**
+TODO:
+- filter overlapping contours
+- fix concave contour angles (180-angle)
+*/
+
+double calcAngle(Vec2f v1, Vec2f v2) {
+	normalize(v1, v1);
+	normalize(v2, v2);
+	return acos(v1.dot(v2)) * 180 / CV_PI;
+}
+
+bool isOverlapping(Rect r1, Rect r2) {
+	//return r1.x + r1.width < r2.x || r1.x > r2.x + r2.width || r1.y + r1.height < r2.y || r1.y > r2.y + r2.height;
+	double minDim;
+	if (r1.width <= r1.height && r1.width <= r2.width && r1.width <= r2.height) minDim = r1.width;
+	else if (r1.height <= r1.width && r1.height <= r2.width && r1.height <= r2.height) minDim = r1.height;
+	else if (r2.width <= r2.height && r2.width <= r1.width && r2.width <= r1.height) minDim = r1.width;
+	else if (r2.height <= r2.width && r2.height <= r1.width && r2.height <= r1.height) minDim = r1.height;
+	return sqrt((r1.x - r2.x) * (r1.x - r2.x) + (r1.y - r2.y) * (r1.x - r2.y)) < minDim;
+}
+
 int main(int args, const char** argv) {
-	Mat img = imread("irregular-shapes.png", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("irregular-shapes.png", CV_LOAD_IMAGE_UNCHANGED);
+	Mat img = imread("shapes.png", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("images.jpg", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("example-pentagons.png", CV_LOAD_IMAGE_UNCHANGED);
 	if (img.empty()) {
 		cout << "Error: Image cannot be loaded..." << endl;
 		return -1;
@@ -19,24 +44,89 @@ int main(int args, const char** argv) {
 	Mat canny_output;
 	const int thresh = 100;
 	vector<vector<Point> > contours;
+	vector<vector<Point> > approximatedContours;
 	vector<Vec4i> hierarchy;
 
 	// Detect edges using canny
 	Canny(img_gray, canny_output, thresh, thresh * 2, 3);
 
-	namedWindow("Canny output", CV_WINDOW_AUTOSIZE);
-	imshow("Canny output", canny_output);
-
 	// Find contours
-	findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	findContours(canny_output, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+
+	if (contours.size() == 0)
+		return -1;
+
+	vector<Rect> boundingRects;
+	boundingRects.push_back(boundingRect(contours[0]));
+	// Drop nested contours
+	for (int i = 1; i < contours.size(); i++) {
+		boundingRects.push_back(boundingRect(contours[i]));
+		if (isOverlapping(boundingRects[i], boundingRects[i - 1])) {
+			cout << "found an overlapping contour" << endl;
+		}
+	}
 
 	// Draw contours
-	Mat drawing = Mat::zeros(canny_output.size(), CV_8UC3);
-	RNG rng(12345);
-	for (int i = 0; i< contours.size(); i++)
+	Mat drawing = img_gray;// Mat::zeros(canny_output.size(), CV_8UC3);
+	cvtColor(drawing, drawing, CV_GRAY2BGR);
+
+	for (int id = 0; id < contours.size(); id++)
 	{
-		Scalar color = Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
-		drawContours(drawing, contours, i, color, 2, 8, hierarchy, 0, Point());
+		vector<Point> contour = contours[id];
+		drawContours(drawing, contours, id, Scalar(0, 0, 255), 2);
+
+		double arclen = arcLength(contour, true);
+
+		vector<Point> approximatedContour;
+		approxPolyDP(contours[id], approximatedContour, arclen/90, true);
+
+		// Number of angles
+		const int numOfAngles = approximatedContour.size();
+
+		// Display number of angles in the centroid of the contour
+		string text = to_string(numOfAngles);
+		int fontFace = FONT_HERSHEY_TRIPLEX;
+		double fontScale = 0.8;
+		int thickness = 1;
+		int baseline = 0;
+		Size textSize = getTextSize(text, fontFace, fontScale, thickness, &baseline);
+		baseline += thickness;
+		Moments m = moments(contour);
+		Point centroid = Point(m.m10 / m.m00, m.m01 / m.m00);
+		putText(drawing, text, Point(centroid.x - textSize.width/2, centroid.y + textSize.height/2), fontFace, fontScale, Scalar(0, 0, 0), thickness);
+
+		// Draw approximated contour
+		approximatedContours.push_back(approximatedContour);
+		drawContours(drawing, approximatedContours, id, Scalar(255, 0, 0), 2);
+
+		// Calculate and draw angles
+
+		if (approximatedContour.size() < 2)
+			break;
+
+		fontFace = FONT_HERSHEY_DUPLEX;
+		fontScale = 0.4;
+
+		cout << "#" << id << " contour: " << endl;
+
+		// Calculate the vectors of the polygon's sides
+		vector<Vec2f> vectors;
+		vectors.push_back((Point2f)approximatedContour[0] - (Point2f)approximatedContour[approximatedContour.size() - 1]);
+		for (int i = 1; i < approximatedContour.size(); i++) {
+			vectors.push_back((Point2f)approximatedContour[i] - (Point2f)approximatedContour[i - 1]);
+		}
+		vectors.push_back((Point2f)approximatedContour[0] - (Point2f)approximatedContour[approximatedContour.size() - 1]);
+
+		// Calculate the angles between the vectors
+		for (int i = 0; i < approximatedContour.size(); i++) {
+			double angle = 180 - calcAngle(vectors[i], vectors[i+1]);
+			cout << angle << endl;
+
+			putText(drawing, to_string((int)angle), approximatedContour[i], fontFace, fontScale, Scalar(0, 0, 0), thickness);
+			putText(drawing, to_string((int)angle), approximatedContour[i] + Point(1, 1), fontFace, fontScale, Scalar(0, 255, 0), thickness);
+		}
+
+		cout << endl;
 	}
 
 	// Show in a window
@@ -44,7 +134,7 @@ int main(int args, const char** argv) {
 	imshow("Contours", drawing);
 
 	waitKey(0);
-	destroyWindow("Canny output");
+	//destroyWindow("Canny output");
 	destroyWindow("Contours");
 	return 0;
 }
