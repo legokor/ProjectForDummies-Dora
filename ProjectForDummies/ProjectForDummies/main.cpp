@@ -6,8 +6,8 @@ using namespace std;
 
 /**
 TODO:
-- filter overlapping contours
 - fix concave contour angles (180-angle)
+- refine epsilon for approxPolyDp
 */
 
 double calcAngle(Vec2f v1, Vec2f v2) {
@@ -16,21 +16,22 @@ double calcAngle(Vec2f v1, Vec2f v2) {
 	return acos(v1.dot(v2)) * 180 / CV_PI;
 }
 
-bool isOverlapping(Rect r1, Rect r2) {
-	//return r1.x + r1.width < r2.x || r1.x > r2.x + r2.width || r1.y + r1.height < r2.y || r1.y > r2.y + r2.height;
-	double minDim;
-	if (r1.width <= r1.height && r1.width <= r2.width && r1.width <= r2.height) minDim = r1.width;
-	else if (r1.height <= r1.width && r1.height <= r2.width && r1.height <= r2.height) minDim = r1.height;
-	else if (r2.width <= r2.height && r2.width <= r1.width && r2.width <= r1.height) minDim = r1.width;
-	else if (r2.height <= r2.width && r2.height <= r1.width && r2.height <= r1.height) minDim = r1.height;
-	return sqrt((r1.x - r2.x) * (r1.x - r2.x) + (r1.y - r2.y) * (r1.x - r2.y)) < minDim;
+bool isContourADuplicate(vector<Point> c1, vector<Point> c2) {
+	Rect r1 = boundingRect(c1);
+	Rect r2 = boundingRect(c2);
+	double tolerance = r1.width / 8;
+	return sqrt((r1.x - r2.x) * (r1.x - r2.x) + (r1.y - r2.y) * (r1.y - r2.y)) < tolerance
+		&& abs(r1.width - r2.width) < tolerance
+		&& abs(r1.height - r2.height) < tolerance;
 }
 
 int main(int args, const char** argv) {
 	//Mat img = imread("irregular-shapes.png", CV_LOAD_IMAGE_UNCHANGED);
-	Mat img = imread("shapes.png", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("shapes.png", CV_LOAD_IMAGE_UNCHANGED);
 	//Mat img = imread("images.jpg", CV_LOAD_IMAGE_UNCHANGED);
 	//Mat img = imread("example-pentagons.png", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("concave-problematic.png", CV_LOAD_IMAGE_UNCHANGED);
+	Mat img = imread("concave.png", CV_LOAD_IMAGE_UNCHANGED);
 	if (img.empty()) {
 		cout << "Error: Image cannot be loaded..." << endl;
 		return -1;
@@ -56,15 +57,17 @@ int main(int args, const char** argv) {
 	if (contours.size() == 0)
 		return -1;
 
-	vector<Rect> boundingRects;
-	boundingRects.push_back(boundingRect(contours[0]));
 	// Drop nested contours
-	for (int i = 1; i < contours.size(); i++) {
-		boundingRects.push_back(boundingRect(contours[i]));
-		if (isOverlapping(boundingRects[i], boundingRects[i - 1])) {
-			cout << "found an overlapping contour" << endl;
+	for (int i = 0; i < contours.size(); i++) {
+		for (int j = i + 1; j < contours.size(); j++) {
+			if (isContourADuplicate(contours[j], contours[i])) {
+				cout << "Found overlapping contours." << endl;
+				contours.erase(contours.begin() + (j--));
+			}
 		}
 	}
+
+	cout << endl;
 
 	// Draw contours
 	Mat drawing = img_gray;// Mat::zeros(canny_output.size(), CV_8UC3);
@@ -109,6 +112,8 @@ int main(int args, const char** argv) {
 
 		cout << "#" << id << " contour: " << endl;
 
+		cout << "Sides: " << numOfAngles << endl;
+
 		// Calculate the vectors of the polygon's sides
 		vector<Vec2f> vectors;
 		vectors.push_back((Point2f)approximatedContour[0] - (Point2f)approximatedContour[approximatedContour.size() - 1]);
@@ -116,11 +121,13 @@ int main(int args, const char** argv) {
 			vectors.push_back((Point2f)approximatedContour[i] - (Point2f)approximatedContour[i - 1]);
 		}
 		vectors.push_back((Point2f)approximatedContour[0] - (Point2f)approximatedContour[approximatedContour.size() - 1]);
+		vectors.push_back((Point2f)approximatedContour[1] - (Point2f)approximatedContour[0]);
 
 		// Calculate the angles between the vectors
 		for (int i = 0; i < approximatedContour.size(); i++) {
 			double angle = 180 - calcAngle(vectors[i], vectors[i+1]);
-			cout << angle << endl;
+			double angleWithNext = calcAngle(vectors[i], vectors[i + 2]);
+			cout << angle << ", " << angleWithNext << endl;
 
 			putText(drawing, to_string((int)angle), approximatedContour[i], fontFace, fontScale, Scalar(0, 0, 0), thickness);
 			putText(drawing, to_string((int)angle), approximatedContour[i] + Point(1, 1), fontFace, fontScale, Scalar(0, 255, 0), thickness);
