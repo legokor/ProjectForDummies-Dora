@@ -30,8 +30,8 @@ int main(int args, const char** argv) {
 	//Mat img = imread("shapes.png", CV_LOAD_IMAGE_UNCHANGED);
 	//Mat img = imread("images.jpg", CV_LOAD_IMAGE_UNCHANGED);
 	//Mat img = imread("example-pentagons.png", CV_LOAD_IMAGE_UNCHANGED);
-	//Mat img = imread("concave-problematic.png", CV_LOAD_IMAGE_UNCHANGED);
-	Mat img = imread("concave.png", CV_LOAD_IMAGE_UNCHANGED);
+	Mat img = imread("concave-problematic.png", CV_LOAD_IMAGE_UNCHANGED);
+	//Mat img = imread("concave.png", CV_LOAD_IMAGE_UNCHANGED);
 	if (img.empty()) {
 		cout << "Error: Image cannot be loaded..." << endl;
 		return -1;
@@ -123,11 +123,22 @@ int main(int args, const char** argv) {
 		vectors.push_back((Point2f)approximatedContour[0] - (Point2f)approximatedContour[approximatedContour.size() - 1]);
 		vectors.push_back((Point2f)approximatedContour[1] - (Point2f)approximatedContour[0]);
 
+		vector<Point> hull;
+		convexHull(approximatedContour, hull);
+
 		// Calculate the angles between the vectors
 		for (int i = 0; i < approximatedContour.size(); i++) {
 			double angle = 180 - calcAngle(vectors[i], vectors[i+1]);
-			double angleWithNext = calcAngle(vectors[i], vectors[i + 2]);
-			cout << angle << ", " << angleWithNext << endl;
+			// Check if this vertex is convex (it's convex if it's in the convex hull)
+			bool convex = false;
+			for (Point p : hull) {
+				if (approximatedContour[i] == p) {
+					convex = true;
+					break;
+				}
+			}
+			if (!convex) angle += 180;
+			cout << angle << endl;
 
 			putText(drawing, to_string((int)angle), approximatedContour[i], fontFace, fontScale, Scalar(0, 0, 0), thickness);
 			putText(drawing, to_string((int)angle), approximatedContour[i] + Point(1, 1), fontFace, fontScale, Scalar(0, 255, 0), thickness);
